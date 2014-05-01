@@ -1,8 +1,8 @@
 {
-  "name": "data-sync",
+  "name": "bit-sync",
   "version": "0.0.0",
   "description": "Synchronize arbitrary data using the rsync algorithm",
-  "main": "data-sync.js",
+  "main": "bit-sync.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,5 +13,5 @@
     "sync"
   ],
   "author": "Clayton Gulick",
-  "license": "ISC"
+  "license": "MIT"
 }

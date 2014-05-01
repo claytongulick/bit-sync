@@ -4,7 +4,7 @@
   "description": "Synchronize arbitrary data using the rsync algorithm",
   "main": "bit-sync.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "qunit -c bit-sync.js -t tests/tests.js"
   },
   "keywords": [
     "rsync",
@@ -13,5 +13,8 @@
     "sync"
   ],
   "author": "Clayton Gulick",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "qunit": "~0.6.2"
+  }
 }

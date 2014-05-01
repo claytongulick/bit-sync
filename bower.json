@@ -1,0 +1,32 @@
+{
+  "name": "bit-sync",
+  "main": "bit-sync.js",
+  "version": "0.0.0",
+  "homepage": "https://github.com/claytongulick/bit-sync",
+  "authors": [
+    "Clayton Gulick <claytongulick@gmail.com>"
+  ],
+  "description": "a utility for synchronizing arbitrary data using the rsync algorithm in pure js",
+  "moduleType": [
+    "globals",
+    "node"
+  ],
+  "keywords": [
+    "rsync",
+    "synchronize",
+    "data",
+    "sync",
+    "binary"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "devDependencies": {
+    "qunit": "~1.14.0"
+  }
+}

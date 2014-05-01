@@ -1,0 +1,17 @@
+{
+  "name": "data-sync",
+  "version": "0.0.0",
+  "description": "Synchronize arbitrary data using the rsync algorithm",
+  "main": "data-sync.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "rsync",
+    "synchronize",
+    "data",
+    "sync"
+  ],
+  "author": "Clayton Gulick",
+  "license": "ISC"
+}

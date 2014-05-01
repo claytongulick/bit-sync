@@ -111,6 +111,20 @@
  *
  * If you find a bug, please file an issue at https://github.com/claytongulick/bit-sync/issues
  *
+ * Tests
+ * -----
+ * Making sure everything works correctly with data synchronization is sort of important, so comprehensive test coverage exists both in the browser and for node.
+ * The unit testing framework of choice is QUnit - chosen for it's simplicity and ability to work easily in both the browser and node.
+ *
+ * To run tests from node, just do: npm test
+ *
+ * To run tests in the browser, just point your browser at tests/index.html - this should work fine from the local file system.
+ *
+ * Internal functions are tested independently, and for that purpose are exposed via the util object in the BSync namespace. For example, BSync.util.adler32(...) .
+ *
+ * It's not recommended to directly execute any function in the util object, since these internal functions probably won't have a stable api and might change depending on what sort of native 
+ * support the browses offer over time.
+ *
  * Credits and Thanks
  * ------------------
  * Of course, most credit goes to Andrew Tridgell for rsync and for being awesome.
@@ -124,7 +138,7 @@ var BSync = new function()
   /**
    * Native js md5 implementation. Written by by Luigi Galli - LG@4e71.org - http://faultylabs.com
    */
-  var MD5 = function(data) {
+  var md5 = function(data) {
 
     // convert number to (unsigned) 32 bit hex, zero filled string
     function to_zerofilled_hex(n) {     
@@ -439,7 +453,7 @@ var BSync = new function()
     var b=0;
 
     //adjust the end to make sure we don't exceed the extents of the data.
-    if(end > data.length)
+    if(end >= data.length)
       end = data.length - 1;
 
     for(i=offset; i <= end; i++)
@@ -496,7 +510,7 @@ var BSync = new function()
   this.createChecksumDocument = createChecksumDocument;
   this.createPatchDocument = createPatchDocument;
   this.applyPatch = applyPatch;
-  this.util = {adler32: adler32, rollingChecksum: rollingChecksum}; //mostly exposing these for the purposes of unit tests, but hey, if they are useful to someone, have at it!
+  this.util = {md5: md5, adler32: adler32, rollingChecksum: rollingChecksum}; //mostly exposing these for the purposes of unit tests, but hey, if they are useful to someone, have at it!
 };
 
 

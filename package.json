@@ -4,7 +4,7 @@
   "description": "Synchronize arbitrary data using the rsync algorithm",
   "main": "bit-sync.js",
   "scripts": {
-    "test": "qunit -c bit-sync.js -t tests/tests.js"
+    "test": "qunit -c BSync:bit-sync.js -t tests/tests.js"
   },
   "keywords": [
     "rsync",

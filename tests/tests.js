@@ -25,6 +25,8 @@ var data = new Uint8Array([0,1,2,3,4,5,6,7,8,9,
     240,241,242,243,244,245,246,247,248,249,
     250,251,252,253,254,255]);
 
+var isNode = ((typeof require) != "undefined") && ((typeof module) != "undefined") && ((typeof module.exports) != "undefined");
+
 QUnit.module("utilities tests");
 test("adler-32",
     function()
@@ -70,7 +72,106 @@ test("rolling checksum", function()
           (result1.checksum == adler2.checksum) &&  //they are the same
           (adler2.checksum != 0), //they are not zero
           "rolling checksums match and are not zero");
-
       }
 
     });
+
+test("checksum document", function()
+    {
+      var testData1 = data.buffer.slice(0);
+      var blockSize = 10;
+      var doc1 = BSync.createChecksumDocument(blockSize,testData1);
+      var Uint8View1 = new Uint8Array(doc1);
+      var Uint32View1 = new Uint32Array(doc1);
+      ok(true,"checksum document 1 created");
+
+      var testData2 = data.buffer.slice(0);
+      var doc2 = BSync.createChecksumDocument(blockSize,testData2);
+      var Uint8View2 = new Uint8Array(doc2);
+      var Uint32View2 = new Uint32Array(doc2);
+      ok(true,"checksum document 2 created");
+      //verify that checksum docs are the same,
+      var pass = true;
+      for(var i=0; i<Uint8View1.length; i++)
+        if(Uint8View1[i] != Uint8View2[i]) { pass=false; break;}
+
+      ok(pass,"checksum documents match byte for byte");
+
+      pass = false;
+      //change data in first block
+      (new Uint8Array(testData2))[0]++;
+      doc2 = BSync.createChecksumDocument(blockSize,testData2);
+      Uint8View2 = new Uint8Array(doc2);
+      Uint32View2 = new Uint32Array(doc2);
+
+      for(var i=0; i<Uint8View1.length; i++)
+        if(Uint8View1[i] != Uint8View2[i]) { pass=true; break;}
+
+      ok(pass, "checksum documents differ after change");
+
+      ok(Uint32View1[2] != Uint32View2[3], "adler32 is different for first block");
+      pass = false;
+      for(var i=3; i<6; i++)
+        if(Uint32View1[i] != Uint32View2[i]) { pass=true; break;}
+      ok(pass, "md5 sum is different for first block");
+
+      pass=true;
+      for(var i=7; i<Uint32View1.length; i++)
+        if(Uint32View1[i] != Uint32View2[i]) { pass=false; break;}
+      ok(pass, "checksums are the same for all blocks except the first");
+
+
+    });
+
+QUnit.module("larger file tests");
+
+//utility function to get file data, regardless if we are in node or browser
+function getFileData(file, callback)
+{
+  if(isNode)
+  {
+    var fs = require("fs");
+    fs.readFile(file, 
+        function(err, data)
+        {
+          if(err)
+            console.log("Error getting file data: " + err);
+          callback(data);
+        });
+  }
+  else
+  {
+    var xhr = new XMLHttpRequest();
+
+    xhr.addEventListener('load', function(){
+      if (xhr.status == 200){
+        callback(xhr.response);
+      }
+    });
+
+    xhr.open('GET', file);
+    xhr.responseType = 'blob';
+    xhr.send(null);
+  }
+}
+
+stop();
+
+var path="";
+if(isNode) path = __dirname + "/audio_files/sample_44k_32bit_float_stereo.wav";
+else path = "./audio_files/sample_44k_32bit_float_stereo.wav";
+getFileData(path,
+    function(data)
+    {
+      start();
+      test("audio file",
+        function()
+        {
+          ok(true, "got data");
+        });
+    });
+
+if(isNode)
+{
+  QUnit.module("node specific tests");
+}

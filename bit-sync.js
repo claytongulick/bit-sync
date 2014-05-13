@@ -405,8 +405,6 @@ var BSync = new function()
             updateRun(fI(b, c, d), 0x432aff97, bytes_to_int32(databytes, ptr + 28), 10)
             updateRun(fI(b, c, d), 0xab9423a7, bytes_to_int32(databytes, ptr + 56), 15)
             updateRun(fI(b, c, d), 0xfc93a039, bytes_to_int32(databytes, ptr + 20), 21)
-            updateRun(fI(b, c, d), 0x655b59c3, bytes_to_int32(databytes, ptr + 48), 6)
-            updateRun(fI(b, c, d), 0x8f0ccc92, bytes_to_int32(databytes, ptr + 12), 10)
             updateRun(fI(b, c, d), 0xffeff47d, bytes_to_int32(databytes, ptr + 40), 15)
             updateRun(fI(b, c, d), 0x85845dd1, bytes_to_int32(databytes, ptr + 4), 21)
             updateRun(fI(b, c, d), 0x6fa87e4f, bytes_to_int32(databytes, ptr + 32), 6)
@@ -425,16 +423,19 @@ var BSync = new function()
             h3 = _add(h3, d)
         }
         // Done! Convert buffers to 128 bit (LE)
-        return int128le_to_hex(h3, h2, h1, h0).toUpperCase()
+        //return int128le_to_hex(h3, h2, h1, h0).toUpperCase()
+        return [h0,h1,h2,h3];
     }
   }
   /* ---- end md5 section ---- */
 
   /**
-   * Create a fast 16 bit hash of a 32bit number
+   * Create a fast 16 bit hash of a 32bit number. Just using a simple mod 2^16 for this for now.
+   * TODO: Evaluate the distribution of adler32 to see if simple modulus is appropriate as a hashing function, or wheter 2^16 should be replaced with a prime
    */
   function hash16(num)
   {
+    return num % 65536;
   }
 
   /**
@@ -443,6 +444,8 @@ var BSync = new function()
    * bit manipulation, we just cache the parts, like {a: ..., b: ..., checksum: ... }.
    *
    * Offset is the start, and end is the last byte for the block to be calculated. end - offset should equal the blockSize - 1
+   *
+   * Data should be a Uint8Array
    *
    * TODO: according to wikipedia, the zlib compression library has a much more efficient implementation of adler. To speed this up, it might be worth investigating whether that can be used here.
    */
@@ -483,10 +486,52 @@ var BSync = new function()
   }
 
   /**
-   * Create a document that contains all of the checksum information for each block in the destination data.
+   * Create a document that contains all of the checksum information for each block in the destination data. Everything is little endian
+   * Document structure:
+   * First 4 bytes = block size
+   * Next 4 bytes = number of blocks
+   * Repeat for number of blocks:
+   *   4 bytes, adler32 checksum
+   *   16 bytes, md5 checksum
+   *
    */
   function createChecksumDocument(blockSize, data)
   {
+    var numBlocks = Math.ceil(data.byteLength / blockSize);
+    var i=0;
+    var docLength = ( numBlocks * //the number of blocks times
+                      ( 4 +       //the 4 bytes for the adler32 plus
+                        16) +     //the 16 bytes for the md5
+                      4 +         //plus 4 bytes for block size
+                      4);         //plus 4 bytes for the number of blocks
+
+    var doc = new ArrayBuffer(docLength);
+    var dataView = new Uint8Array(data);
+    var bufferView = new Uint32Array(doc);
+    var offset = 2;
+    var chunkSize = 5; //each chunk is 4 bytes for adler32 and 16 bytes for md5. for Uint32Array view, this is 20 bytes, or 5 4-byte uints
+
+    bufferView[0] = numBlocks;
+    bufferView[1] = blockSize;
+
+    //spin through the data and create checksums for each block
+    for(i=0; i < numBlocks; i++)
+    {
+      var start = i * blockSize;
+      var end = (i * blockSize) + blockSize;
+
+      //calculate the adler32 checksum
+      bufferView[offset] = adler32(start, end - 1, dataView).checksum;
+      offset++;
+
+      //calculate the full md5 checksum
+      //TODO: optimize the md5 function to avoid a memory copy here. It should accept a range like adler32 function
+      var md5sum = md5(data.slice(start, end));
+      for(var j=0; j < 4; j++) bufferView[offset++] = md5sum[j];
+
+    }
+
+    return doc;
 
   }
 

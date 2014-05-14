@@ -163,12 +163,21 @@ else path = "./audio_files/sample_44k_32bit_float_stereo.wav";
 getFileData(path,
     function(data)
     {
-      start();
-      test("audio file",
-        function()
-        {
-          ok(true, "got data");
-        });
+      var reader = new FileReader();
+      reader.onload = function(f)
+      {
+        var buffer = f.target.result;
+        start();
+        test("audio file",
+          function()
+          {
+            ok(true, "got data");
+            var doc = BSync.createChecksumDocument(10000, buffer);
+            ok(true, "created doc");
+            var Uint32View = new Uint32Array(doc);
+          });
+      };
+      reader.readAsArrayBuffer(data);
     });
 
 if(isNode)

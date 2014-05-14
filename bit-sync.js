@@ -67,11 +67,18 @@
  * function createChecksumDocument(blockSize, data)
  *
  * This function will create the checksum document for the destination data. This is what the source uses to determine what's changed. It accepts two 
- * parameters: blockSize and data. The document that's generated is an ArrayBuffer of binary data. 
+ * parameters: blockSize and data. The document that's generated is an ArrayBuffer of binary data. It's important to note that this function call is slow! Both adler32 and md5sums are generated
+ * for each block in the data. For 10s of megs of data, this can easily take a few seconds. You'll want to cache this document and only regenerate it when needed.
  *
  * The blocksize parameter is just the size of the "chunks" you want to use to generate checksums. This really depends on the size of your data. Algorimically, there are some
  * tradeoffs here between computation speed and false first-pass hits, if you want to know more about it read Andrew Tridgell's paper on rsync. If you're not sure, don't care,
- * or are too busy, just try a value of 1000 for this. If your data isn't that big, the utility will adjust it for you.
+ * or are too busy, just try a value of 1000 for this. If your data isn't that big, the utility will adjust it for you. 
+ *
+ * When you're considering what to use for the block size, there's also a tradeoff in terms of the size of the checksum document and the patch document. For each block in the data, 20 bytes of checksum
+ * data is created, 4 bytes for a fast adler32 checksum and 16 bytes for a md5sum. If you have 20 megs of data to sync, and you pick a block size of 1000 bytes, you're going to end up with a checksum document
+ * that's around 400k. Depending on your application this might be appropriate, because the granularity of updated blocks will be smaller, only 1k. So, when something changes, only a 1k block will be sent in the 
+ * patch document. On the other hand, if you chose a block size of 10k, your checksum document will only be about 40k - however each changed block will be much larger, so a single byte change would result in
+ * a 10k update over the wire. Again, this tradeoff really depends on your application and how your users modify data.
  *
  * The data parameter is the destination data you want to synchronize. This can be pretty much any array-like type that javascript supports. Strings, arrays and ArrayBuffers are all
  * fine. ArrayBuffers will be iterated over using a Uint8Array view, so pay attention to the endianness of your data, this utility makes no attempt to correct mismatched endianness.
@@ -118,7 +125,7 @@
  *
  * To run tests from node, just do: npm test
  *
- * To run tests in the browser, just point your browser at tests/index.html - this should work fine from the local file system.
+ * To run tests in the browser, just point your browser at tests/index.html - this won't work from the local file system, you'll need to host it on some sort of server.
  *
  * Internal functions are tested independently, and for that purpose are exposed via the util object in the BSync namespace. For example, BSync.util.adler32(...) .
  *
@@ -137,6 +144,7 @@ var BSync = new function()
   /******* Privates *********/
   /**
    * Native js md5 implementation. Written by by Luigi Galli - LG@4e71.org - http://faultylabs.com
+   * Modified by Clay Gulick - clay@ratiosoftware.com - http://ratiosoftware.com
    */
   var md5 = function(data) {
 
@@ -300,10 +308,10 @@ var BSync = new function()
             d = c
             c = b
             //b = b + rol(a + (nf + (sin32 + dw32)), b32)
-            b = _add(b, 
+            b = 0x0FFFFFFFF & (b +
                 rol( 
-                    _add(a, 
-                        _add(nf, _add(sin32, dw32))
+                    0x0FFFFFFFF & (a +  
+                        (0x0FFFFFFFF & (nf + (0x0FFFFFFFF & (sin32 + dw32))))
                     ), b32
                 )
             )
@@ -536,11 +544,123 @@ var BSync = new function()
   }
 
   /**
-   * Create a patch document that contains all the information needed to bring the destination data into synchronization with the source data
+   * Parse the checksum document into a hash table
+   *
+   * The hash table will have 2^16 entries. Each entry will point to an array that has the following strucutre:
+   * [
+   *  [ [blockIndex, adler32sum, md5sum],[blockIndex, adler32sum, md5sum],... ]
+   *  [ [blockIndex, adler32sum, md5sum],[blockIndex, adler32sum, md5sum],... ]
+   *  ...
+   * ]
+   */
+  function parseChecksumDocument(checksumDocument)
+  {
+    var ret = [];
+    var i=0;
+    var view = new Uint32Array(checksumDocument);
+    var blockIndex = 1; //blockIndex is 1 based, not zero based
+    var numBlocks = view[1];
+
+    //each chunk in the document is 20 bytes long. 32 bit view indexes 4 bytes, so increment by 5.
+    for(i = 2; i <= view.length - 5; i += 5)
+    {
+      var row = [
+                 blockIndex, //the index of the block
+                 view[i], //the adler32sum
+                 [view[i+1],[view[i+2],view[i+3],view[i+4] //the md5sum
+                ];
+      ret[hash16(row[0])]=row;
+      blockIndex++;
+    }
+
+    if(numBlocks != (blockIndex - 1))
+    {
+      throw "Error parsing checksum document. Document states the number of blocks is: " + numBlocks + " however, " + blockIndex - 1 + " blocks were discovered";
+    }
+
+    return ret;
+
+  }
+
+
+  /**
+   * Create a patch document that contains all the information needed to bring the destination data into synchronization with the source data.
+   *
+   * The patch document looks like this: (little Endian)
+   * 4 bytes - blockSize
+   * 4 bytes - number of patches
+   * For each patch:
+   *   4 bytes - last matching block index. NOTE: This is 1 based index! Zero indicates beginning of file, NOT the first block
+   *   4 bytes - patch size
+   *   n bytes - new data
    */
   function createPatchDocument(checksumDocument, data)
   {
+    function appendBuffer( buffer1, buffer2 ) {
+      var tmp = new Uint8Array( buffer1.byteLength + buffer2.byteLength );
+      tmp.set( new Uint8Array( buffer1 ), 0 );
+      tmp.set( new Uint8Array( buffer2 ), buffer1.byteLength );
+      return tmp.buffer;
+    }
 
+    /**
+     * First, check to see if there's a match on the 16 bit hash
+     * Then, look through all the entries in the hashtable row for an adler 32 match.
+     * Finally, do a strong md5 comparison
+     */
+    function checkMatch(adlerInfo, hashTable, block)
+    {
+      var hash = hash16(adlerInfo.checksum);
+      if(!(hashTable[hash])) return false;
+      var row = hashTable[hash];
+      var i=0;
+      var matchedIndex=0;
+
+      for(i=0; i<row.length; i++)
+      {
+        //compare adler32sum
+        if(row[i][1] != adlerInfo.checksum) continue;
+        //do strong comparison
+        md5sum1 = md5(block);
+        md5sum2 = row[i][2];
+        if( 
+            md5sum1[0] == md5sum2[0] &&
+            md5sum1[1] == md5sum2[1] &&
+            md5sum1[2] == md5sum2[2] &&
+            md5sum1[3] == md5sum2[3] 
+          )
+          return row[0]; //match found, return the matched block index
+
+      }
+
+      throw "Error - checkMatch should never reach this point!"
+
+    }
+
+    var checksumDocumentView = new Uint32Array(checksumDocument);
+    var blockSize = checksumDocumentView[0];
+    var numBlocks = checksumDocumentView[1];
+    var numPatches = 0;
+
+    var patchDocument = new ArrayBuffer(8);
+    var patchDocumentView32 = new Uint32Array(patchDocument);
+    var i=0;
+
+    var hashTable = parseChecksumDocument(checksumDocument);
+    var endOffset = data.byteLength - blockSize;
+    var adlerInfo = adler32(0, blockSize - 1, data);
+
+    patchDocumentView32[0]=blockSize;
+
+    //do first match check
+    var matchedBlock = checkMatch(
+
+    for(i=blockSize; i <= endOffset; i++)
+    {
+      adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, data);
+    }
+
+    patchDocumentView32[1] = numPatches;
   }
 
   /**

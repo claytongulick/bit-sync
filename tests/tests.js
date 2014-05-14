@@ -123,6 +123,21 @@ test("checksum document", function()
 
     });
 
+test("patch document",
+    function()
+    {
+      var testData1 = data.buffer.slice(0);
+      var blockSize = 10;
+      var doc1 = BSync.createChecksumDocument(blockSize,testData1);
+
+      var testData2 = data.buffer.slice(0);
+      //(new Uint8Array(testData2))[0]++;
+
+      var patchDocument = BSync.createPatchDocument(doc1,testData2);
+      ok(true, "patch document created");
+
+    });
+
 QUnit.module("larger file tests");
 
 //utility function to get file data, regardless if we are in node or browser

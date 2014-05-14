@@ -74,6 +74,8 @@
  * tradeoffs here between computation speed and false first-pass hits, if you want to know more about it read Andrew Tridgell's paper on rsync. If you're not sure, don't care,
  * or are too busy, just try a value of 1000 for this. If your data isn't that big, the utility will adjust it for you. 
  *
+ * There are also some bandwith considerations to the block size. There's a tradeoff between the size of the checksum document and the size of the edited blocks that will be sent over the wire.
+ *
  * The data parameter is the destination data you want to synchronize. This can be pretty much any array-like type that javascript supports. Strings, arrays and ArrayBuffers are all
  * fine. ArrayBuffers will be iterated over using a Uint8Array view, so pay attention to the endianness of your data, this utility makes no attempt to correct mismatched endianness.
  *
@@ -513,8 +515,8 @@ var BSync = new function()
     var offset = 2;
     var chunkSize = 5; //each chunk is 4 bytes for adler32 and 16 bytes for md5. for Uint32Array view, this is 20 bytes, or 5 4-byte uints
 
-    bufferView[0] = numBlocks;
-    bufferView[1] = blockSize;
+    bufferView[0] = blockSize;
+    bufferView[1] = numBlocks;
 
     //spin through the data and create checksums for each block
     for(i=0; i < numBlocks; i++)
@@ -527,8 +529,11 @@ var BSync = new function()
       offset++;
 
       //calculate the full md5 checksum
-      //TODO: optimize the md5 function to avoid a memory copy here. It should accept a range like adler32 function
-      var md5sum = md5(data.slice(start, end));
+      var chunkLength = blockSize;
+      if((start + blockSize) > data.byteLength)
+        chunkLength = data.byteLength - start;
+
+      var md5sum = md5(new Uint8Array(data, start, chunkLength));
       for(var j=0; j < 4; j++) bufferView[offset++] = md5sum[j];
 
     }
@@ -554,16 +559,20 @@ var BSync = new function()
     var view = new Uint32Array(checksumDocument);
     var blockIndex = 1; //blockIndex is 1 based, not zero based
     var numBlocks = view[1];
+    var row;
+    var hash;
 
     //each chunk in the document is 20 bytes long. 32 bit view indexes 4 bytes, so increment by 5.
     for(i = 2; i <= view.length - 5; i += 5)
     {
-      var row = [
-                 blockIndex, //the index of the block
-                 view[i], //the adler32sum
-                 [view[i+1],[view[i+2],view[i+3],view[i+4] //the md5sum
-                ];
-      ret[hash16(row[0])]=row;
+      checksumInfo = [
+             blockIndex, //the index of the block
+             view[i], //the adler32sum
+             [view[i+1],view[i+2],view[i+3],view[i+4]] //the md5sum
+            ];
+      hash = hash16(checksumInfo[1]);
+      if(!ret[hash]) ret[hash] = [];
+      ret[hash].push(checksumInfo);
       blockIndex++;
     }
 
@@ -619,6 +628,7 @@ var BSync = new function()
         if(row[i][1] != adlerInfo.checksum) continue;
         //do strong comparison
         md5sum1 = md5(block);
+        md5sum1 = new Uint32Array([md5sum1[0],md5sum1[1],md5sum1[2],md5sum1[3]]); //convert to unsigned 32
         md5sum2 = row[i][2];
         if( 
             md5sum1[0] == md5sum2[0] &&
@@ -626,7 +636,7 @@ var BSync = new function()
             md5sum1[2] == md5sum2[2] &&
             md5sum1[3] == md5sum2[3] 
           )
-          return row[0]; //match found, return the matched block index
+          return row[i][0]; //match found, return the matched block index
 
       }
 
@@ -657,12 +667,12 @@ var BSync = new function()
     var matchCount = 0;
 
 
-    for(i=0; i <= endOffset; i++)
+    for(;;)
     {
       if(adlerInfo)
-        adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, data);
+        adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, dataUint8);
       else
-        adlerInfo = adler32(0, blockSize - 1, data);
+        adlerInfo = adler32(i, i + blockSize - 1, dataUint8);
 
       var chunkSize = 0;
 
@@ -700,8 +710,10 @@ var BSync = new function()
           currentPatchSize = 0;
         }
         lastMatchIndex = matchedBlock;
-        i+=blockSize;
+        i+=blockSize; 
+        if(i > dataUint8.length) break;
         adlerInfo=null;
+        continue;
       }
       else
       {
@@ -715,14 +727,18 @@ var BSync = new function()
           currentPatchUint8 = new Uint8Array(currentPatch);
         }
       }
+      if((i + blockSize) > dataUint8.length) break;
+      i++;
     } //end for each byte in the data
 
     var patchDocumentView32 = new Uint32Array(patchDocument);
     patchDocumentView32[0] = blockSize;
     patchDocumentView32[1] = numPatches;
     patchDocumentView32[2] = matchCount;
-    patchDocument = appendBuffer(patchDocument, matchedBlocks);
+    patchDocument = appendBuffer(patchDocument, matchedBlocks.slice(0,matchCount * 4));
     patchDocument = appendBuffer(patchDocument, patches);
+
+    var patchDocumentView32 = new Uint32Array(patchDocument);
 
     return patchDocument;
   }

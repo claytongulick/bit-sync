@@ -131,7 +131,7 @@ test("patch document",
       var doc1 = BSync.createChecksumDocument(blockSize,testData1);
 
       var testData2 = data.buffer.slice(0);
-      //(new Uint8Array(testData2))[0]++;
+      (new Uint8Array(testData2))[0]++;
 
       var patchDocument = BSync.createPatchDocument(doc1,testData2);
       ok(true, "patch document created");

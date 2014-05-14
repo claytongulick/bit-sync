@@ -700,14 +700,15 @@ var BSync = new function()
         if(currentPatchSize > 0)
         {
           //create the patch and append it to the patches buffer
-          patch = new ArrayBuffer(currentPatchSize + 4 + 4); //4 for last match index, 4 for patch size
-          var patchUint32 = new Uint32Array(patch);
+          patch = new ArrayBuffer(4 + 4); //4 for last match index, 4 for patch size
+          var patchUint32 = new Uint32Array(patch,0,2);
           patchUint32[0] = lastMatchIndex;
           patchUint32[1] = currentPatchSize;
           patch = appendBuffer(patch,currentPatch.slice(0,currentPatchSize));
           patches = appendBuffer(patches, patch);
           currentPatch = new ArrayBuffer(1000);
           currentPatchSize = 0;
+          numPatches++;
         }
         lastMatchIndex = matchedBlock;
         i+=blockSize; 
@@ -738,7 +739,8 @@ var BSync = new function()
     patchDocument = appendBuffer(patchDocument, matchedBlocks.slice(0,matchCount * 4));
     patchDocument = appendBuffer(patchDocument, patches);
 
-    var patchDocumentView32 = new Uint32Array(patchDocument);
+    var patchDocumentView32 = new Uint32Array(patchDocument,0,matchCount + 3);
+    var patchDocumentView8 = new Uint8Array(patchDocument);
 
     return patchDocument;
   }

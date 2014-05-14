@@ -640,7 +640,8 @@ var BSync = new function()
     var numPatches = 0;
 
     var patchDocument = new ArrayBuffer(12);
-    var patchDocumentView32 = new Uint32Array(patchDocument);
+    var patch;
+    var patches = new ArrayBuffer(0);
     var i=0;
 
     var hashTable = parseChecksumDocument(checksumDocument);
@@ -655,7 +656,6 @@ var BSync = new function()
     var matchedBlocksUint32 = new Uint32Array(matchedBlocks);
     var matchCount = 0;
 
-    patchDocumentView32[0]=blockSize;
 
     for(i=0; i <= endOffset; i++)
     {
@@ -689,7 +689,13 @@ var BSync = new function()
         }
         if(currentPatchSize > 0)
         {
-          patchDocument = appendBuffer(patchDocument, currentPatch.slice(0,currentPatchSize));
+          //create the patch and append it to the patches buffer
+          patch = new ArrayBuffer(currentPatchSize + 4 + 4); //4 for last match index, 4 for patch size
+          var patchUint32 = new Uint32Array(patch);
+          patchUint32[0] = lastMatchIndex;
+          patchUint32[1] = currentPatchSize;
+          patch = appendBuffer(patch,currentPatch.slice(0,currentPatchSize));
+          patches = appendBuffer(patches, patch);
           currentPatch = new ArrayBuffer(1000);
           currentPatchSize = 0;
         }
@@ -709,9 +715,16 @@ var BSync = new function()
           currentPatchUint8 = new Uint8Array(currentPatch);
         }
       }
-    }
+    } //end for each byte in the data
 
+    var patchDocumentView32 = new Uint32Array(patchDocument);
+    patchDocumentView32[0] = blockSize;
     patchDocumentView32[1] = numPatches;
+    patchDocumentView32[2] = matchCount;
+    patchDocument = appendBuffer(patchDocument, matchedBlocks);
+    patchDocument = appendBuffer(patchDocument, patches);
+
+    return patchDocument;
   }
 
   /**

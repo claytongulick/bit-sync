@@ -74,12 +74,6 @@
  * tradeoffs here between computation speed and false first-pass hits, if you want to know more about it read Andrew Tridgell's paper on rsync. If you're not sure, don't care,
  * or are too busy, just try a value of 1000 for this. If your data isn't that big, the utility will adjust it for you. 
  *
- * When you're considering what to use for the block size, there's also a tradeoff in terms of the size of the checksum document and the patch document. For each block in the data, 20 bytes of checksum
- * data is created, 4 bytes for a fast adler32 checksum and 16 bytes for a md5sum. If you have 20 megs of data to sync, and you pick a block size of 1000 bytes, you're going to end up with a checksum document
- * that's around 400k. Depending on your application this might be appropriate, because the granularity of updated blocks will be smaller, only 1k. So, when something changes, only a 1k block will be sent in the 
- * patch document. On the other hand, if you chose a block size of 10k, your checksum document will only be about 40k - however each changed block will be much larger, so a single byte change would result in
- * a 10k update over the wire. Again, this tradeoff really depends on your application and how your users modify data.
- *
  * The data parameter is the destination data you want to synchronize. This can be pretty much any array-like type that javascript supports. Strings, arrays and ArrayBuffers are all
  * fine. ArrayBuffers will be iterated over using a Uint8Array view, so pay attention to the endianness of your data, this utility makes no attempt to correct mismatched endianness.
  *
@@ -589,6 +583,9 @@ var BSync = new function()
    * The patch document looks like this: (little Endian)
    * 4 bytes - blockSize
    * 4 bytes - number of patches
+   * 4 bytes - number of matched blocks
+   * For each matched block:
+   *   4 bytes - the index of the matched block
    * For each patch:
    *   4 bytes - last matching block index. NOTE: This is 1 based index! Zero indicates beginning of file, NOT the first block
    *   4 bytes - patch size
@@ -642,22 +639,76 @@ var BSync = new function()
     var numBlocks = checksumDocumentView[1];
     var numPatches = 0;
 
-    var patchDocument = new ArrayBuffer(8);
+    var patchDocument = new ArrayBuffer(12);
     var patchDocumentView32 = new Uint32Array(patchDocument);
     var i=0;
 
     var hashTable = parseChecksumDocument(checksumDocument);
     var endOffset = data.byteLength - blockSize;
-    var adlerInfo = adler32(0, blockSize - 1, data);
+    var adlerInfo = null;
+    var lastMatchIndex = 0;
+    var currentPatch = new ArrayBuffer(1000);
+    var currentPatchUint8 = new Uint8Array(currentPatch);
+    var currentPatchSize = 0;
+    var dataUint8 = new Uint8Array(data);
+    var matchedBlocks = new ArrayBuffer(1000);
+    var matchedBlocksUint32 = new Uint32Array(matchedBlocks);
+    var matchCount = 0;
 
     patchDocumentView32[0]=blockSize;
 
-    //do first match check
-    var matchedBlock = checkMatch(
-
-    for(i=blockSize; i <= endOffset; i++)
+    for(i=0; i <= endOffset; i++)
     {
-      adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, data);
+      if(adlerInfo)
+        adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, data);
+      else
+        adlerInfo = adler32(0, blockSize - 1, data);
+
+      var chunkSize = 0;
+
+      //determine the size of the next data chuck to evaluate. Default to blockSize, but clamp to end of data
+      if((i + blockSize) > data.byteLength)
+        chunkSize = data.byteLength - i;
+      else
+        chunkSize = blockSize;
+
+      var matchedBlock = checkMatch(adlerInfo, hashTable, new Uint8Array(data,i,chunkSize));
+      if(matchedBlock)
+      { 
+        //if we have a match, do the following:
+        //1) add the matched block index to our tracking buffer
+        //2) check to see if there's a current patch. If so, add it to the patch document. 
+        //3) jump forward blockSize bytes and continue
+        matchedBlocksUint32[matchCount] = matchedBlock;
+        matchCount++;
+        //check to see if we need more memory for the matched blocks
+        if(matchCount >= matchedBlocksUint32.length)
+        {
+          matchedBlocks = appendBuffer(matchedBlocks, new ArrayBuffer(1000));
+          matchedBlocksUint32 = new Uint32Array(matchedBlocks);
+        }
+        if(currentPatchSize > 0)
+        {
+          patchDocument = appendBuffer(patchDocument, currentPatch.slice(0,currentPatchSize));
+          currentPatch = new ArrayBuffer(1000);
+          currentPatchSize = 0;
+        }
+        lastMatchIndex = matchedBlock;
+        i+=blockSize;
+        adlerInfo=null;
+      }
+      else
+      {
+        //while we don't have a block match, append bytes to the current patch
+        currentPatchUint8[currentPatchSize] = dataUint8[i]; 
+        currentPatchSize++;
+        if(currentPatchSize >= currentPatch.byteLength)
+        {
+          //allocate another 1000 bytes
+          currentPatch = appendBuffer(currentPatch, new ArrayBuffer(1000));
+          currentPatchUint8 = new Uint8Array(currentPatch);
+        }
+      }
     }
 
     patchDocumentView32[1] = numPatches;

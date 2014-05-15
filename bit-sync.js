@@ -747,10 +747,77 @@ var BSync = new function()
 
   /**
    * Apply the patch to the destination data, making it into a duplicate of the source data
+   * Due to the inability to modify the size of ArrayBuffers once they have been allocated, this function
+   * will return a new ArrayBuffer with the update file data. Note that this will consume a good bit of extra memory.
    */
   function applyPatch(patchDocument, data)
   {
+    function appendBlock( buffer, blockUint8) {
+      var tmp = new Uint8Array( buffer.byteLength + blockUint8.length);
+      tmp.set( new Uint8Array( buffer ), 0 );
+      tmp.set( blockUint8, buffer.byteLength );
+      return tmp.buffer;
+    }
 
+    var patchDocumentView32 = new Uint32Array(patchDocument,0,3);
+    var blockSize = patchDocumentView32[0];
+    var patchCount = patchDocumentView32[1];
+    var matchCount = patchDocumentView32[2];
+    var matchedBlockView32 = new Uint32Array(patchDocument,12,matchCount);
+    var i=0;
+    var j=0;
+    var exactMatch = true;
+
+    //first, let's deal with the simple case where we fully match. This is just an optimization for the unchanged file case.
+    //to determine this, the number of matches must exactly equal ceil of data / blockSize, and num patches must be zero
+    //additionally, the matched block indexes must start with 1 and be in order. This is to deal with the extreme edge case of a block being relocated
+    //on an exact block boundary
+    if(patchCount == 0)
+      if(Math.ceil(data.byteLength / blockSize) == matchCount)
+        for(i = 1; i <= matchCount; i++)
+          if(matchedBlockView32[i] != i) { exactMatch = false; break; }
+    if(exactMatch) return data;
+
+    //there was a modification. We need to construct the new document.
+    //the way this works is as follows:
+    //1) for each patch, get the last index of the matching block
+    //2) loop through the matchedBlocks, appending blocks up to the index from step 1
+    //3) append the patch at that point
+    //4) after all patches have been applied, continue to loop through the matchedBlocks appending each one in order
+    var offset = 12 + (matchCount * 4); //offset to the start of the patches
+    var patchView32;  
+    var lastMatchingBlockIndex=0;
+    var patchSize=0;
+    var patchView8;
+    var matchIndex=0; //the index into the matching blocks array
+    var blockIndex=0; //the index of the block in the matching blocks array
+    var ret = new ArayBuffer(0);
+    for(i=0; i< patchCount; i++)
+    {
+      patchView32 = new Uint32Array(patchDocument,offset,2);
+      lastMatchingBlockIndex = patchView32[0];
+      patchSize = patchView32[1];
+      patchView8 = new Uint8Array(patchDocument, offset + 8, patchSize);
+      offset = offset + 8 + patchSize;
+
+      for(;matchIndex < matchedBlockView32.length; matchIndex++)
+      {
+        blockIndex = matchedBlockView32[matchIndex];
+        if(blockIndex > lastMatchingBlockIndex) break;
+        appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, blockSize));
+      }
+
+      appendBlock(ret, patchView8);
+    }
+
+    //we're done with all the patches, add the remaining blocks
+    for(;matchIndex < matchedBlockView32.length; matchIndex++)
+    {
+      blockIndex = matchedBlockView32[matchIndex];
+      appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, blockSize));
+    }
+
+    return ret;
   }
 
   /******** Public API ***********/

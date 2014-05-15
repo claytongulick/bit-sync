@@ -766,7 +766,6 @@ var BSync = new function()
     var matchedBlockView32 = new Uint32Array(patchDocument,12,matchCount);
     var i=0;
     var j=0;
-    var exactMatch = true;
 
     //first, let's deal with the simple case where we fully match. This is just an optimization for the unchanged file case.
     //to determine this, the number of matches must exactly equal ceil of data / blockSize, and num patches must be zero
@@ -775,8 +774,8 @@ var BSync = new function()
     if(patchCount == 0)
       if(Math.ceil(data.byteLength / blockSize) == matchCount)
         for(i = 1; i <= matchCount; i++)
-          if(matchedBlockView32[i] != i) { exactMatch = false; break; }
-    if(exactMatch) return data;
+          if(matchedBlockView32[i-1] != i) { break; }
+    if((i - 1) == matchCount) return data; //exact match
 
     //there was a modification. We need to construct the new document.
     //the way this works is as follows:
@@ -791,7 +790,8 @@ var BSync = new function()
     var patchView8;
     var matchIndex=0; //the index into the matching blocks array
     var blockIndex=0; //the index of the block in the matching blocks array
-    var ret = new ArayBuffer(0);
+    var ret = new ArrayBuffer(0);
+    var chunkSize=0;
     for(i=0; i< patchCount; i++)
     {
       patchView32 = new Uint32Array(patchDocument,offset,2);
@@ -804,17 +804,23 @@ var BSync = new function()
       {
         blockIndex = matchedBlockView32[matchIndex];
         if(blockIndex > lastMatchingBlockIndex) break;
-        appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, blockSize));
+        if((blockIndex * blockSize) > data.byteLength)
+          chunkSize = data.byteLength % blockSize;
+        else chunkSize = blockSize;
+        ret = appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, chunkSize));
       }
 
-      appendBlock(ret, patchView8);
+      ret = appendBlock(ret, patchView8);
     }
 
     //we're done with all the patches, add the remaining blocks
     for(;matchIndex < matchedBlockView32.length; matchIndex++)
     {
       blockIndex = matchedBlockView32[matchIndex];
-      appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, blockSize));
+      if((blockIndex * blockSize) > data.byteLength)
+        chunkSize = data.byteLength % blockSize;
+      else chunkSize = blockSize;
+      ret = appendBlock(ret, new Uint8Array(data, (blockIndex-1) * blockSize, chunkSize));
     }
 
     return ret;

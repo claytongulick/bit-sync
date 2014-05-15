@@ -126,6 +126,7 @@ test("checksum document", function()
 test("patch document",
     function()
     {
+      //TODO: Seriously improve this test.
       var testData1 = data.buffer.slice(0);
       var blockSize = 10;
       var doc1 = BSync.createChecksumDocument(blockSize,testData1);
@@ -135,6 +136,49 @@ test("patch document",
 
       var patchDocument = BSync.createPatchDocument(doc1,testData2);
       ok(true, "patch document created");
+
+    });
+
+test("apply patch",
+    function()
+    {
+      var testData1 = data.buffer.slice(0);
+      var blockSize = 10;
+      var doc1 = BSync.createChecksumDocument(blockSize,testData1);
+
+      var testData2 = data.buffer.slice(0);
+      var patchDocument = BSync.createPatchDocument(doc1,testData2);
+      var testData1 = BSync.applyPatch(patchDocument, testData1);
+      ok(testData1.byteLength == testData2.byteLength, "same length on identical documents");
+      var pass=true;
+      var testData1View = new Uint8Array(testData1);
+      var testData2View = new Uint8Array(testData2);
+      for(var i=0; i<testData1View.length;i++)
+      {
+        if(testData1View[i] != testData2View[i])
+        {
+          pass=false;
+          break;
+        }
+      }
+      ok(pass, "identical documents");
+      //modify the data a bit
+      (new Uint8Array(testData2))[0]++;
+      patchDocument = BSync.createPatchDocument(doc1,testData2);
+      testData1 = BSync.applyPatch(patchDocument, testData1);
+      testData1View = new Uint8Array(testData1);
+      testData2View = new Uint8Array(testData2);
+      ok(testData1View.length == testData2View.length, "data length match");
+      var pass=true;
+      for(var i=0; i<testData1View.length;i++)
+      {
+        if(testData1View[i] != testData2View[i])
+        {
+          pass=false;
+          break;
+        }
+      }
+      ok(pass, "byte for byte match");
 
     });
 

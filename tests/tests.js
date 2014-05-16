@@ -25,9 +25,41 @@ var data = new Uint8Array([0,1,2,3,4,5,6,7,8,9,
     240,241,242,243,244,245,246,247,248,249,
     250,251,252,253,254,255]);
 
+function verifyData(buffer1, buffer2)
+{
+  var buffer1View8 = new Uint8Array(buffer1);
+  var buffer2View8 = new Uint8Array(buffer2);
+
+  if(buffer1.byteLength != buffer2.byteLength) return false;
+
+  var pass = true;
+  for(var i=0; i<buffer1View8.length; i++)
+    if(buffer1View8[i] != buffer2View8[i])
+    {
+      pass=false;
+      break;
+    }
+  return pass;
+}
+
 var isNode = ((typeof require) != "undefined") && ((typeof module) != "undefined") && ((typeof module.exports) != "undefined");
 
 QUnit.module("utilities tests");
+test("read int 32",
+    function()
+    {
+      var arr = new Uint32Array(2);
+      arr[0] = 2147483647;
+      var buff = arr.buffer;
+      var test = BSync.util.readInt32(new Uint8Array(buff),0);
+      ok(test == 2147483647, "int32 read correctly");
+
+      arr[1] = 4294967295;
+      var test = BSync.util.readInt32(new Uint8Array(buff),4);
+      ok(test == 4294967295, "int32 read correctly");
+
+      
+    });
 test("adler-32",
     function()
     {
@@ -145,40 +177,43 @@ test("apply patch",
       var testData1 = data.buffer.slice(0);
       var blockSize = 10;
       var doc1 = BSync.createChecksumDocument(blockSize,testData1);
-
+      var checksumDocView;
+      var patchDocumentView;
+      var dataView;
       var testData2 = data.buffer.slice(0);
       var patchDocument = BSync.createPatchDocument(doc1,testData2);
-      var testData1 = BSync.applyPatch(patchDocument, testData1);
-      ok(testData1.byteLength == testData2.byteLength, "same length on identical documents");
-      var pass=true;
-      var testData1View = new Uint8Array(testData1);
-      var testData2View = new Uint8Array(testData2);
-      for(var i=0; i<testData1View.length;i++)
-      {
-        if(testData1View[i] != testData2View[i])
-        {
-          pass=false;
-          break;
-        }
-      }
-      ok(pass, "identical documents");
+      var testData3 = BSync.applyPatch(patchDocument, testData1);
+      ok(verifyData(testData1,testData2), "identical documents");
       //modify the data a bit
       (new Uint8Array(testData2))[0]++;
       patchDocument = BSync.createPatchDocument(doc1,testData2);
-      testData1 = BSync.applyPatch(patchDocument, testData1);
-      testData1View = new Uint8Array(testData1);
-      testData2View = new Uint8Array(testData2);
-      ok(testData1View.length == testData2View.length, "data length match");
-      var pass=true;
-      for(var i=0; i<testData1View.length;i++)
+      testData3 = BSync.applyPatch(patchDocument, testData1);
+      ok(verifyData(testData2,testData3), "identical documents");
+
+      //modify it a bit more
+      //(new Uint8Array(testData2))[0]++;
+      //(new Uint8Array(testData2))[10]++;
+      //(new Uint8Array(testData2))[100]++;
+      (new Uint8Array(testData2))[200]++;
+      patchDocument = BSync.createPatchDocument(doc1,testData2);
+      testData3 = BSync.applyPatch(patchDocument, testData1);
+      ok(verifyData(testData2,testData3), "identical documents");
+
+      //let's do ten runs of randomized mods. By the end of this, the data should differ significantly
+      for(var j=0; j<10; j++)
       {
-        if(testData1View[i] != testData2View[i])
-        {
-          pass=false;
-          break;
-        }
+        checksumDocView = new Uint8Array(doc1);
+
+        //modify a random number of bytes
+        var numMods = Math.ceil(Math.random() * testData2.byteLength);
+        for(var k=0; k < numMods; k++)
+          (new Uint8Array(testData2))[Math.floor(Math.random() * testData2.byteLength)]++;
+        patchDocument = BSync.createPatchDocument(doc1,testData2);
+        patchDocumentView = new Uint8Array(patchDocument);
+        testData3 = BSync.applyPatch(patchDocument,testData1);
+        dataView = new Uint8Array(testData3);
+        ok(verifyData(testData2, testData3), "exact match");
       }
-      ok(pass, "byte for byte match");
 
     });
 

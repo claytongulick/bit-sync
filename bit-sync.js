@@ -490,6 +490,17 @@ var BSync = new function()
   }
 
   /**
+   * This is a function born of annoyance. You can't create a Uint32Array at a non 4 byte boundary. So this is necessary to read
+   * a 32bit int from an arbitrary location. Lame. 
+   *
+   * BTW: This assumes everything to be little endian.
+   */
+  function readInt32(uint8View, offset)
+  {
+    return (uint8View[offset] | uint8View[++offset] << 8 | uint8View[++offset] << 16 | uint8View[++offset] << 24) >>> 0;
+  }
+
+  /**
    * Create a document that contains all of the checksum information for each block in the destination data. Everything is little endian
    * Document structure:
    * First 4 bytes = block size
@@ -707,6 +718,7 @@ var BSync = new function()
           patch = appendBuffer(patch,currentPatch.slice(0,currentPatchSize));
           patches = appendBuffer(patches, patch);
           currentPatch = new ArrayBuffer(1000);
+          currentPatchUint8 = new Uint8Array(currentPatch);
           currentPatchSize = 0;
           numPatches++;
         }
@@ -784,19 +796,18 @@ var BSync = new function()
     //3) append the patch at that point
     //4) after all patches have been applied, continue to loop through the matchedBlocks appending each one in order
     var offset = 12 + (matchCount * 4); //offset to the start of the patches
-    var patchView32;  
     var lastMatchingBlockIndex=0;
     var patchSize=0;
     var patchView8;
     var matchIndex=0; //the index into the matching blocks array
     var blockIndex=0; //the index of the block in the matching blocks array
     var ret = new ArrayBuffer(0);
+    var patchDocumentView8 = new Uint8Array(patchDocument);
     var chunkSize=0;
     for(i=0; i< patchCount; i++)
     {
-      patchView32 = new Uint32Array(patchDocument,offset,2);
-      lastMatchingBlockIndex = patchView32[0];
-      patchSize = patchView32[1];
+      lastMatchingBlockIndex = readInt32(patchDocumentView8,offset);
+      patchSize = readInt32(patchDocumentView8,offset + 4);
       patchView8 = new Uint8Array(patchDocument, offset + 8, patchSize);
       offset = offset + 8 + patchSize;
 
@@ -830,7 +841,7 @@ var BSync = new function()
   this.createChecksumDocument = createChecksumDocument;
   this.createPatchDocument = createPatchDocument;
   this.applyPatch = applyPatch;
-  this.util = {md5: md5, adler32: adler32, rollingChecksum: rollingChecksum}; //mostly exposing these for the purposes of unit tests, but hey, if they are useful to someone, have at it!
+  this.util = {md5: md5, adler32: adler32, rollingChecksum: rollingChecksum, readInt32: readInt32}; //mostly exposing these for the purposes of unit tests, but hey, if they are useful to someone, have at it!
 };
 
 

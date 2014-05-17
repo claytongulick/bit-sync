@@ -191,7 +191,7 @@ test("apply patch",
       ok(verifyData(testData2,testData3), "identical documents");
 
       //modify it a bit more
-      /*(new Uint8Array(testData2))[0]++;
+      (new Uint8Array(testData2))[0]++;
       (new Uint8Array(testData2))[10]++;
       (new Uint8Array(testData2))[11]++;
       (new Uint8Array(testData2))[20]++;
@@ -212,15 +212,16 @@ test("apply patch",
       (new Uint8Array(testData2))[215]++;
       (new Uint8Array(testData2))[220]++;
       (new Uint8Array(testData2))[230]++;
-      (new Uint8Array(testData2))[240]++;*/
+      (new Uint8Array(testData2))[240]++;
       (new Uint8Array(testData2))[254]++;
       patchDocument = BSync.createPatchDocument(doc1,testData2);
       testData3 = BSync.applyPatch(patchDocument, testData1);
       ok(verifyData(testData2,testData3), "identical documents");
 
-      //let's do ten runs of randomized mods. By the end of this, the data should differ significantly
-      for(var j=0; j<10; j++)
+      //let's do lots runs of randomized mods. should get pretty good modification distribution through these runs for testing
+      for(var j=0; j<1000; j++)
       {
+        testData2 = data.buffer.slice(0);
         checksumDocView = new Uint8Array(doc1);
 
         //modify a random number of bytes
@@ -276,10 +277,8 @@ else path = "./audio_files/sample_44k_32bit_float_stereo.wav";
 getFileData(path,
     function(data)
     {
-      var reader = new FileReader();
-      reader.onload = function(f)
+      function runTest(buffer)
       {
-        var buffer = f.target.result;
         start();
         test("audio file",
           function()
@@ -287,10 +286,33 @@ getFileData(path,
             ok(true, "got data");
             var doc = BSync.createChecksumDocument(10000, buffer);
             ok(true, "created doc");
-            var Uint32View = new Uint32Array(doc);
+            var clone = buffer.slice(0);
+            var numMods = 10;
+            var cloneView8 = new Uint8Array(clone);
+            //cloneView8[0]++;
+            for(var i=0; i<numMods; i++)
+            {
+              cloneView8[Math.floor(Math.random() * clone.byteLength)]++;
+            }
+            var patchDocument = BSync.createPatchDocument(doc, clone);
+            ok(true, "created patch document");
+            var patchedFile = BSync.applyPatch(patchDocument, buffer);
+            ok(verifyData(patchedFile, clone),"music file patched, identical");
           });
-      };
-      reader.readAsArrayBuffer(data);
+      }
+      if(isNode)
+      {
+      }
+      else
+      {
+        var reader = new FileReader();
+        reader.onload = function(f)
+        {
+          var buffer = f.target.result;
+          runTest(buffer);
+        };
+        reader.readAsArrayBuffer(data);
+      }
     });
 
 if(isNode)

@@ -472,7 +472,7 @@ var BSync = new function()
     a %= 65536; //65536 = 2^16, used for M in the tridgell equation
     b %= 65536;
 
-    return {a: a, b: b, checksum: (b << 16) | a };
+    return {a: a, b: b, checksum: ((b << 16) | a) >>> 0 };
 
   }
 

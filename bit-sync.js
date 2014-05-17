@@ -685,7 +685,7 @@ var BSync = new function()
       if((i + blockSize) > data.byteLength)
       {
         chunkSize = data.byteLength - i;
-        adlerInfo=null;
+        adlerInfo=null; //need to reset this because the rolling checksum doesn't work correctly on a final non-aligned block
       }
       else
         chunkSize = blockSize;
@@ -726,7 +726,7 @@ var BSync = new function()
         }
         lastMatchIndex = matchedBlock;
         i+=blockSize; 
-        if(i >= dataUint8.length) break;
+        if(i >= dataUint8.length -1 ) break;
         adlerInfo=null;
         continue;
       }
@@ -742,7 +742,7 @@ var BSync = new function()
           currentPatchUint8 = new Uint8Array(currentPatch);
         }
       }
-      if((i) >= dataUint8.length) break;
+      if((i) >= dataUint8.length -1) break;
       i++;
     } //end for each byte in the data
     if(currentPatchSize > 0)

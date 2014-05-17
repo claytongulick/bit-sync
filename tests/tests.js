@@ -211,8 +211,9 @@ test("apply patch",
       (new Uint8Array(testData2))[213]++;
       (new Uint8Array(testData2))[215]++;
       (new Uint8Array(testData2))[220]++;
-      (new Uint8Array(testData2))[230]++;*/
-      (new Uint8Array(testData2))[240]++;
+      (new Uint8Array(testData2))[230]++;
+      (new Uint8Array(testData2))[240]++;*/
+      (new Uint8Array(testData2))[254]++;
       patchDocument = BSync.createPatchDocument(doc1,testData2);
       testData3 = BSync.applyPatch(patchDocument, testData1);
       ok(verifyData(testData2,testData3), "identical documents");

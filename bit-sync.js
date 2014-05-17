@@ -651,7 +651,7 @@ var BSync = new function()
 
       }
 
-      throw "Error - checkMatch should never reach this point!"
+      return false;
 
     }
 
@@ -680,18 +680,20 @@ var BSync = new function()
 
     for(;;)
     {
-      if(adlerInfo)
-        adlerInfo = rollingChecksum(adlerInfo, i, i + blockSize - 1, dataUint8);
-      else
-        adlerInfo = adler32(i, i + blockSize - 1, dataUint8);
-
       var chunkSize = 0;
-
       //determine the size of the next data chuck to evaluate. Default to blockSize, but clamp to end of data
       if((i + blockSize) > data.byteLength)
+      {
         chunkSize = data.byteLength - i;
+        adlerInfo=null;
+      }
       else
         chunkSize = blockSize;
+
+      if(adlerInfo)
+        adlerInfo = rollingChecksum(adlerInfo, i, i + chunkSize - 1, dataUint8);
+      else
+        adlerInfo = adler32(i, i + chunkSize - 1, dataUint8);
 
       var matchedBlock = checkMatch(adlerInfo, hashTable, new Uint8Array(data,i,chunkSize));
       if(matchedBlock)
@@ -724,7 +726,7 @@ var BSync = new function()
         }
         lastMatchIndex = matchedBlock;
         i+=blockSize; 
-        if(i > dataUint8.length) break;
+        if(i >= dataUint8.length) break;
         adlerInfo=null;
         continue;
       }
@@ -740,9 +742,20 @@ var BSync = new function()
           currentPatchUint8 = new Uint8Array(currentPatch);
         }
       }
-      if((i + blockSize) > dataUint8.length) break;
+      if((i) >= dataUint8.length) break;
       i++;
     } //end for each byte in the data
+    if(currentPatchSize > 0)
+    {
+      //create the patch and append it to the patches buffer
+      patch = new ArrayBuffer(4 + 4); //4 for last match index, 4 for patch size
+      var patchUint32 = new Uint32Array(patch,0,2);
+      patchUint32[0] = lastMatchIndex;
+      patchUint32[1] = currentPatchSize;
+      patch = appendBuffer(patch,currentPatch.slice(0,currentPatchSize));
+      patches = appendBuffer(patches, patch);
+      numPatches++;
+    }
 
     var patchDocumentView32 = new Uint32Array(patchDocument);
     patchDocumentView32[0] = blockSize;

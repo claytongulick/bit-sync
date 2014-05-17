@@ -191,10 +191,28 @@ test("apply patch",
       ok(verifyData(testData2,testData3), "identical documents");
 
       //modify it a bit more
-      //(new Uint8Array(testData2))[0]++;
-      //(new Uint8Array(testData2))[10]++;
-      //(new Uint8Array(testData2))[100]++;
+      /*(new Uint8Array(testData2))[0]++;
+      (new Uint8Array(testData2))[10]++;
+      (new Uint8Array(testData2))[11]++;
+      (new Uint8Array(testData2))[20]++;
+      (new Uint8Array(testData2))[21]++;
+      (new Uint8Array(testData2))[30]++;
+      (new Uint8Array(testData2))[40]++;
+      (new Uint8Array(testData2))[50]++;
+      (new Uint8Array(testData2))[100]++;
+      (new Uint8Array(testData2))[110]++;
+      (new Uint8Array(testData2))[120]++;
+      (new Uint8Array(testData2))[130]++;
+      (new Uint8Array(testData2))[140]++;
+      (new Uint8Array(testData2))[150]++;
       (new Uint8Array(testData2))[200]++;
+      (new Uint8Array(testData2))[210]++;
+      (new Uint8Array(testData2))[211]++;
+      (new Uint8Array(testData2))[213]++;
+      (new Uint8Array(testData2))[215]++;
+      (new Uint8Array(testData2))[220]++;
+      (new Uint8Array(testData2))[230]++;*/
+      (new Uint8Array(testData2))[240]++;
       patchDocument = BSync.createPatchDocument(doc1,testData2);
       testData3 = BSync.applyPatch(patchDocument, testData1);
       ok(verifyData(testData2,testData3), "identical documents");

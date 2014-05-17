@@ -91,8 +91,8 @@ source data. The patch document that's created by this call should be applied to
 
 **function applyPatch(patchDocument, data)**
 
-This applies the changes in the patchDocument to the destination data, bringing it into synchronization with the source data. The patch document should have been created by a call to 
-createPatchDocument() on the source data. It takes two parameters as well, the patch document to apply, and the destination data to apply it to.
+This applies the changes in the patchDocument to the destination data, returning a new ArrayBuffer that is synchronized with the source data. The patch document should have been created by a call to 
+createPatchDocument() on the source data. It takes two parameters as well, the patch document to apply, and the destination data to apply it to. Note: this doesn't modify the destination data in-place, it creates a new buffer. This is because ArrayBuffer sizes are immutable.
 
 Installation
 ------------
